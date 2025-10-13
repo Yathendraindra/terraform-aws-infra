@@ -43,3 +43,40 @@ resource "aws_subnet" "private_1b" {
     Type    = "private"
   }
 }
+
+# -------------------------------
+# Internet Gateway
+# -------------------------------
+resource "aws_internet_gateway" "igw" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name    = "main-igw"
+    Project = "terraform-aws-infra"
+  }
+}
+# -------------------------------
+# Public Route Table
+# -------------------------------
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.igw.id
+  }
+
+  tags = {
+    Name    = "public-rt"
+    Project = "terraform-aws-infra"
+  }
+}
+
+# -------------------------------
+# Route Table Association
+# -------------------------------
+resource "aws_route_table_association" "public_assoc" {
+  subnet_id      = aws_subnet.public_1a.id
+  route_table_id = aws_route_table.public.id
+}
