@@ -1,7 +1,6 @@
 # -------------------------------
 # VPC Configuration
 # -------------------------------
-
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
@@ -14,7 +13,7 @@ resource "aws_vpc" "main" {
 }
 
 # -------------------------------
-# Public Subnets
+# Public Subnet (ap-south-1a)
 # -------------------------------
 resource "aws_subnet" "public_1a" {
   vpc_id                  = aws_vpc.main.id
@@ -30,7 +29,7 @@ resource "aws_subnet" "public_1a" {
 }
 
 # -------------------------------
-# Private Subnets
+# Private Subnet (ap-south-1b)
 # -------------------------------
 resource "aws_subnet" "private_1b" {
   vpc_id            = aws_vpc.main.id
@@ -55,10 +54,10 @@ resource "aws_internet_gateway" "igw" {
     Project = "terraform-aws-infra"
   }
 }
+
 # -------------------------------
 # Public Route Table
 # -------------------------------
-
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -74,9 +73,62 @@ resource "aws_route_table" "public" {
 }
 
 # -------------------------------
-# Route Table Association
+# Associate Route Table with Public Subnet
 # -------------------------------
 resource "aws_route_table_association" "public_assoc" {
   subnet_id      = aws_subnet.public_1a.id
   route_table_id = aws_route_table.public.id
+}
+
+# -------------------------------
+# Security Group for EC2
+# -------------------------------
+resource "aws_security_group" "web_sg" {
+  name        = "web_sg"
+  description = "Allow SSH and HTTP access"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "Allow SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks  = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Allow HTTP"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks  = ["0.0.0.0/0"]
+  }
+  egress {
+    from_port  = 0
+    to_port    = 0
+    protocol   = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name    = "web_sg"
+    Project = "terraform-aws-infra"
+  }
+}
+
+# -------------------------------
+# EC2 Instance in Public Subnet
+# -------------------------------
+resource "aws_instance" "web_servers" {
+  ami                           = "ami-0dee22c13ea7a9a67"
+  instance_type                 = "t2.micro"
+  subnet_id                     = aws_subnet.public_1a.id
+  key_name                       = "devops-demo"
+  vpc_security_group_ids        = [aws_security_group.web_sg.id]
+  associate_public_ip_address = true
+
+  tags = {
+    Name    = "web_server"
+    Project = "terraform-aws-infra"
+  }
 }
