@@ -29,11 +29,26 @@ resource "aws_subnet" "public_1a" {
 }
 
 # -------------------------------
+# Private Subnet (ap-south-1a)
+# -------------------------------
+resource "aws_subnet" "private_1a" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "ap-south-1a"
+
+  tags = {
+    Name    = "private-subnet-1a"
+    Project = "terraform-aws-infra"
+    Type    = "private"
+  }
+}
+
+# -------------------------------
 # Private Subnet (ap-south-1b)
 # -------------------------------
 resource "aws_subnet" "private_1b" {
   vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.2.0/24"
+  cidr_block        = "10.0.3.0/24"
   availability_zone = "ap-south-1b"
 
   tags = {
@@ -43,6 +58,17 @@ resource "aws_subnet" "private_1b" {
   }
 }
 
+resource "aws_subnet" "private_1c" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.4.0/24"
+  availability_zone = "ap-south-1c"
+
+  tags = {
+    Name    = "private-subnet-1c"
+    Project = "terraform-aws-infra"
+    Type    = "private"
+  }
+}
 # -------------------------------
 # Internet Gateway
 # -------------------------------
@@ -123,9 +149,14 @@ resource "aws_route_table" "private" {
 }
 
 # -------------------------------
-# Associate Private Subnet with Private Route Table
+# Associate Private Subnets with Private Route Table
 # -------------------------------
-resource "aws_route_table_association" "private_assoc" {
+resource "aws_route_table_association" "private_assoc_a" {
+  subnet_id      = aws_subnet.private_1a.id
+  route_table_id = aws_route_table.private.id
+}
+
+resource "aws_route_table_association" "private_assoc_b" {
   subnet_id      = aws_subnet.private_1b.id
   route_table_id = aws_route_table.private.id
 }
@@ -153,6 +184,7 @@ resource "aws_security_group" "web_sg" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -196,14 +228,12 @@ resource "random_id" "bucket_id" {
 # -------------------------------
 resource "aws_s3_bucket" "project_bucket" {
   bucket = "terraform-aws-infra-bucket-${random_id.bucket_id.hex}"
-  acl    = "private"
 
   tags = {
     Name    = "terraform-aws-infra-bucket"
     Project = "terraform-aws-infra"
   }
 }
-
 # -------------------------------
 # Enable Versioning for S3 Bucket
 # -------------------------------
@@ -215,7 +245,9 @@ resource "aws_s3_bucket_versioning" "project_bucket_versioning" {
   }
 }
 
+# -------------------------------
 # IAM Role for EC2 to access S3
+# -------------------------------
 resource "aws_iam_role" "ec2_s3_role" {
   name = "ec2_s3_role"
 
@@ -231,14 +263,86 @@ resource "aws_iam_role" "ec2_s3_role" {
   })
 }
 
-# Attach S3 read/write policy
+# -------------------------------
+# Attach S3 policy
+# -------------------------------
 resource "aws_iam_role_policy_attachment" "ec2_s3_attach" {
   role       = aws_iam_role.ec2_s3_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
 }
 
+# -------------------------------
 # Instance Profile for EC2
+# -------------------------------
 resource "aws_iam_instance_profile" "ec2_s3_profile" {
   name = "ec2_s3_profile"
   role = aws_iam_role.ec2_s3_role.name
+}
+
+# -------------------------------
+# Security Group for RDS
+# -------------------------------
+resource "aws_security_group" "rds_sg" {
+  name        = "rds_sg"
+  description = "Allow MySQL access from EC2"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "Allow MySQL from web server"
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.web_sg.id] # only EC2 can access
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name    = "rds_sg"
+    Project = "terraform-aws-infra"
+  }
+}
+
+# -------------------------------
+# RDS Subnet Group
+# -------------------------------
+resource "aws_db_subnet_group" "rds_subnets" {
+  name = "rds-subnet-group"
+  subnet_ids = [
+    aws_subnet.private_1a.id,
+    aws_subnet.private_1b.id,
+    aws_subnet.private_1c.id
+  ]
+
+  tags = {
+    Name    = "rds-subnet-group"
+    Project = "terraform-aws-infra"
+  }
+}
+
+# -------------------------------
+# RDS MySQL Instance
+# -------------------------------
+resource "aws_db_instance" "mysql_db" {
+  identifier             = "terraform-db"
+  engine                 = "mysql"
+  engine_version         = "8.0"
+  instance_class         = "db.t3.micro"
+  allocated_storage      = 20
+  username               = "admin"
+  password               = "Admin1234!" # use sensitive vars in production
+  db_subnet_group_name   = aws_db_subnet_group.rds_subnets.name
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]
+  skip_final_snapshot    = true
+  publicly_accessible    = false
+
+  tags = {
+    Name    = "terraform-db"
+    Project = "terraform-aws-infra"
+  }
 }

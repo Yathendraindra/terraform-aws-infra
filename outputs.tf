@@ -2,14 +2,15 @@ output "vpc_id" {
   description = "The ID of the created VPC"
   value       = aws_vpc.main.id
 }
+
 output "public_subnet_id" {
   description = "ID of the public subnet"
   value       = aws_subnet.public_1a.id
 }
 
-output "private_subnet_id" {
-  description = "ID of the private subnet"
-  value       = aws_subnet.private_1b.id
+output "private_subnet_ids" {
+  description = "IDs of the private subnets"
+  value       = [aws_subnet.private_1b.id, aws_subnet.private_1c.id]
 }
 
 output "internet_gateway_id" {
@@ -45,4 +46,14 @@ output "ec2_public_ip" {
 output "s3_bucket_name" {
   description = "Name of the S3 bucket"
   value       = aws_s3_bucket.project_bucket.id
+}
+
+output "rds_endpoint" {
+  description = "Endpoint of the RDS instance"
+  value       = aws_db_instance.mysql_db.endpoint
+}
+
+output "rds_port" {
+  description = "Port of the RDS instance"
+  value       = aws_db_instance.mysql_db.port
 }
