@@ -176,6 +176,7 @@ resource "aws_instance" "web_servers" {
   key_name                    = "devops-demo"
   vpc_security_group_ids      = [aws_security_group.web_sg.id]
   associate_public_ip_address = true
+  iam_instance_profile        = aws_iam_instance_profile.ec2_s3_profile.name
 
   tags = {
     Name    = "web_server"
@@ -183,3 +184,61 @@ resource "aws_instance" "web_servers" {
   }
 }
 
+# -------------------------------
+# Random ID for unique bucket name
+# -------------------------------
+resource "random_id" "bucket_id" {
+  byte_length = 4
+}
+
+# -------------------------------
+# S3 Bucket
+# -------------------------------
+resource "aws_s3_bucket" "project_bucket" {
+  bucket = "terraform-aws-infra-bucket-${random_id.bucket_id.hex}"
+  acl    = "private"
+
+  tags = {
+    Name    = "terraform-aws-infra-bucket"
+    Project = "terraform-aws-infra"
+  }
+}
+
+# -------------------------------
+# Enable Versioning for S3 Bucket
+# -------------------------------
+resource "aws_s3_bucket_versioning" "project_bucket_versioning" {
+  bucket = aws_s3_bucket.project_bucket.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# IAM Role for EC2 to access S3
+resource "aws_iam_role" "ec2_s3_role" {
+  name = "ec2_s3_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+    }]
+  })
+}
+
+# Attach S3 read/write policy
+resource "aws_iam_role_policy_attachment" "ec2_s3_attach" {
+  role       = aws_iam_role.ec2_s3_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+}
+
+# Instance Profile for EC2
+resource "aws_iam_instance_profile" "ec2_s3_profile" {
+  name = "ec2_s3_profile"
+  role = aws_iam_role.ec2_s3_role.name
+}
