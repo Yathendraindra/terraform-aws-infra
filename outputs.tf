@@ -22,7 +22,23 @@ output "public_route_table_id" {
   value       = aws_route_table.public.id
 }
 
+output "nat_gateway_id" {
+  description = "ID of the NAT Gateway"
+  value       = aws_nat_gateway.nat.id
+}
+
+output "nat_eip" {
+  description = "Elastic IP allocated to NAT Gateway"
+  value       = aws_eip.nat.public_ip
+}
+
+output "private_route_table_id" {
+  description = "ID of the private route table"
+  value       = aws_route_table.private.id
+}
+
 output "ec2_public_ip" {
   description = "Public IP of the EC2 instance"
   value       = aws_instance.web_servers.public_ip
 }
+

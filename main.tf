@@ -81,6 +81,56 @@ resource "aws_route_table_association" "public_assoc" {
 }
 
 # -------------------------------
+# Elastic IP for NAT Gateway
+# -------------------------------
+resource "aws_eip" "nat" {
+  tags = {
+    Name    = "nat-eip"
+    Project = "terraform-aws-infra"
+  }
+}
+
+# -------------------------------
+# NAT Gateway in Public Subnet
+# -------------------------------
+resource "aws_nat_gateway" "nat" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public_1a.id
+
+  tags = {
+    Name    = "nat-gateway"
+    Project = "terraform-aws-infra"
+  }
+
+  depends_on = [aws_internet_gateway.igw]
+}
+
+# -------------------------------
+# Private Route Table
+# -------------------------------
+resource "aws_route_table" "private" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat.id
+  }
+
+  tags = {
+    Name    = "private-rt"
+    Project = "terraform-aws-infra"
+  }
+}
+
+# -------------------------------
+# Associate Private Subnet with Private Route Table
+# -------------------------------
+resource "aws_route_table_association" "private_assoc" {
+  subnet_id      = aws_subnet.private_1b.id
+  route_table_id = aws_route_table.private.id
+}
+
+# -------------------------------
 # Security Group for EC2
 # -------------------------------
 resource "aws_security_group" "web_sg" {
@@ -93,7 +143,7 @@ resource "aws_security_group" "web_sg" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks  = ["0.0.0.0/0"]
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {
@@ -101,12 +151,12 @@ resource "aws_security_group" "web_sg" {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks  = ["0.0.0.0/0"]
+    cidr_blocks = ["0.0.0.0/0"]
   }
   egress {
-    from_port  = 0
-    to_port    = 0
-    protocol   = "-1"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
@@ -120,11 +170,11 @@ resource "aws_security_group" "web_sg" {
 # EC2 Instance in Public Subnet
 # -------------------------------
 resource "aws_instance" "web_servers" {
-  ami                           = "ami-0dee22c13ea7a9a67"
-  instance_type                 = "t2.micro"
-  subnet_id                     = aws_subnet.public_1a.id
-  key_name                       = "devops-demo"
-  vpc_security_group_ids        = [aws_security_group.web_sg.id]
+  ami                         = "ami-0dee22c13ea7a9a67"
+  instance_type               = "t2.micro"
+  subnet_id                   = aws_subnet.public_1a.id
+  key_name                    = "devops-demo"
+  vpc_security_group_ids      = [aws_security_group.web_sg.id]
   associate_public_ip_address = true
 
   tags = {
@@ -132,3 +182,4 @@ resource "aws_instance" "web_servers" {
     Project = "terraform-aws-infra"
   }
 }
+
