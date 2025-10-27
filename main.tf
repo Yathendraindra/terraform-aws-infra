@@ -28,12 +28,24 @@ resource "aws_subnet" "public_1a" {
   }
 }
 
+resource "aws_subnet" "public_1b" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.2.0/24"
+  availability_zone       = "ap-south-1b"
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name    = "public-subnet-1b"
+    Project = "terraform-aws-infra"
+  }
+}
+
 # -------------------------------
 # Private Subnet (ap-south-1a)
 # -------------------------------
 resource "aws_subnet" "private_1a" {
   vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.2.0/24"
+  cidr_block        = "10.0.3.0/24"
   availability_zone = "ap-south-1a"
 
   tags = {
@@ -48,7 +60,7 @@ resource "aws_subnet" "private_1a" {
 # -------------------------------
 resource "aws_subnet" "private_1b" {
   vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.3.0/24"
+  cidr_block        = "10.0.4.0/24"
   availability_zone = "ap-south-1b"
 
   tags = {
@@ -60,7 +72,7 @@ resource "aws_subnet" "private_1b" {
 
 resource "aws_subnet" "private_1c" {
   vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.4.0/24"
+  cidr_block        = "10.0.5.0/24"
   availability_zone = "ap-south-1c"
 
   tags = {
@@ -103,6 +115,11 @@ resource "aws_route_table" "public" {
 # -------------------------------
 resource "aws_route_table_association" "public_assoc" {
   subnet_id      = aws_subnet.public_1a.id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table_association" "public_assoc_b" {
+  subnet_id      = aws_subnet.public_1b.id
   route_table_id = aws_route_table.public.id
 }
 
@@ -345,4 +362,129 @@ resource "aws_db_instance" "mysql_db" {
     Name    = "terraform-db"
     Project = "terraform-aws-infra"
   }
+}
+
+# -------------------------------
+# Security Group for ALB
+# -------------------------------
+resource "aws_security_group" "alb_sg" {
+  name        = "alb_sg"
+  description = "Allow inbound HTTP traffic to ALB"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "Allow HTTP from anywhere"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name    = "alb_sg"
+    Project = "terraform-aws-infra"
+  }
+}
+
+# -------------------------------
+# Target Group for EC2 instances
+# -------------------------------
+
+resource "aws_lb_target_group" "web_tg" {
+  name        = "web-tg"
+  port        = 80
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "instance"
+
+  health_check {
+    path                = "/"
+    protocol            = "HTTP"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+  }
+
+  tags = {
+    Name    = "web-tg"
+    Project = "terraform-aws-infra"
+  }
+
+}
+
+# -------------------------------
+# Application Load Balancer (ALB)
+# -------------------------------
+resource "aws_lb" "app_lb" {
+  name               = "app-lb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb_sg.id]
+  subnets            = [aws_subnet.public_1a.id, aws_subnet.public_1b.id]
+
+  tags = {
+    Name    = "app-lb"
+    Project = "terraform-aws-infra"
+  }
+}
+
+
+# -------------------------------
+# ALB Listener
+# -------------------------------
+resource "aws_lb_listener" "http_listener" {
+  load_balancer_arn = aws_lb.app_lb.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.web_tg.arn
+  }
+
+}
+
+# -------------------------------
+# Attach EC2 Instance to Target Group
+# -------------------------------
+resource "aws_lb_target_group_attachment" "web_tg_attach" {
+  target_group_arn = aws_lb_target_group.web_tg.arn
+  target_id        = aws_instance.web_servers.id
+  port             = 80
+}
+
+resource "aws_lb_target_group" "app_tg" {
+  name        = "app-tg"
+  port        = 80
+  protocol    = "HTTP"
+  target_type = "instance"
+  vpc_id      = aws_vpc.main.id
+
+  health_check {
+    path                = "/"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 3
+    unhealthy_threshold = 2
+    matcher             = "200-399"
+  }
+
+  tags = {
+    Name    = "app-tg"
+    Project = "terraform-aws-infra"
+  }
+}
+
+resource "aws_lb_target_group_attachment" "app_tg_attachment" {
+  target_group_arn = aws_lb_target_group.app_tg.arn
+  target_id        = aws_instance.web_servers.id
+  port             = 80
 }

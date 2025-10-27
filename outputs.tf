@@ -57,3 +57,8 @@ output "rds_port" {
   description = "Port of the RDS instance"
   value       = aws_db_instance.mysql_db.port
 }
+
+output "alb_dns_name" {
+  description = "DNS name of the ALB"
+  value       = aws_lb.app_lb.dns_name
+}
